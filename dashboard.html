@@ -1,0 +1,940 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Portal ASSA · Dashboard</title>
+<link rel="icon" href="data:,">
+<script src="https://unpkg.com/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+:root{
+  --bg:#f7fafc;--txt:#0f172a;--muted:#475569;--panel:#fff;--border:#e2e8f0;--accent:#2563eb;--ok:#16a34a;--warn:#d97706;--bad:#dc2626
+}
+html,body{margin:0;height:100%;font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--txt)}
+.wrap{max-width:1200px;margin:20px auto;padding:0 16px}
+header{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.brand{font-weight:800}
+.badge{display:inline-block;padding:2px 8px;border-radius:999px;border:1px solid var(--border);background:#fff}
+.input,select,textarea{background:#fff;border:1px solid var(--border);border-radius:10px;padding:8px 10px}
+textarea{width:100%;min-height:140px;resize:vertical}
+.btn{background:var(--accent);color:#fff;border:0;border-radius:10px;padding:9px 12px;font-weight:700;cursor:pointer}
+.btn.ghost{background:transparent;color:#111;border:1px solid var(--border)}
+.tabs{display:flex;gap:6px;flex-wrap:wrap}
+.tab{background:#edf2ff;color:#1e3a8a;border:1px solid #c7d2fe;padding:8px 10px;border-radius:999px;font-size:12px;cursor:pointer}
+.tab.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:16px;margin-top:12px}
+.kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}
+.card h3{margin:0 0 6px 0;font-size:13px;color:var(--muted)}
+.big{font-size:28px;font-weight:800}
+.table{width:100%;border-collapse:collapse}
+.table th,.table td{border-bottom:1px solid var(--border);padding:10px;text-align:left;vertical-align:top}
+.status{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:4px 10px;font-size:12px;border:1px solid}
+.ok{background:#ecfdf5;color:#065f46;border-color:#a7f3d0}
+.pend{background:#fefce8;color:#92400e;border-color:#fde68a}
+.rech{background:#fef2f2;color:#991b1b;border-color:#fecaca}
+.pill{background:#eef2ff;color:#1e3a8a;border:1px solid #c7d2fe;border-radius:999px;padding:6px 10px;font-size:12px}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0}
+.scroll{max-height:460px;overflow:auto}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.25);display:none;align-items:center;justify-content:center;padding:16px;z-index:50}
+.modal>div{background:#fff;max-width:1000px;width:100%;border-radius:16px;border:1px solid var(--border);padding:16px}
+.modal h2{margin:0 0 8px 0}
+.help{font-size:12px;color:var(--muted)}
+.expbtn{width:28px;height:28px;border-radius:6px;border:1px solid var(--border);background:#fff;cursor:pointer;font-weight:800;line-height:26px;text-align:center}
+.expbtn[aria-expanded="true"]{background:#eef2ff;border-color:#c7d2fe;color:#1e3a8a}
+.details-row{display:none;background:#fcfcff}
+.details{padding:10px 6px}
+.details h4{margin:6px 0;font-size:12px;color:var(--muted)}
+.details ul{margin:6px 0 0 18px;padding:0}
+.details li{margin:2px 0}
+.small-table{width:100%;border-collapse:collapse;margin-top:8px}
+.small-table th,.small-table td{border-bottom:1px solid var(--border);padding:6px 8px;font-size:13px}
+.small-table th{color:var(--muted);text-transform:uppercase;letter-spacing:.2px;font-weight:700}
+.chk-item{display:flex;align-items:center;gap:8px;margin:4px 0}
+.chk-item input[type="checkbox"]{transform:scale(1.2)}
+.chk-done{text-decoration:line-through;opacity:.7}
+.proc-list{display:grid;grid-template-columns:1fr;gap:10px}
+.proc-card{border:1px solid var(--border);border-radius:12px;padding:12px;background:#fff}
+.proc-header{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.proc-title{font-weight:800}
+.proc-preview{border-top:1px dashed var(--border);margin-top:8px;padding-top:8px}
+.proc-edit{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:980px){.proc-edit{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div>
+      <div class="brand">Portal ASSA · Dashboard</div>
+      <div class="help">Reporte <span id="lastUpdated">actualizado…</span></div>
+    </div>
+    <div class="row" style="align-items:center">
+      <span id="who" class="badge">–</span>
+      <span id="role" class="badge">–</span>
+      <button id="btn-logout" class="btn ghost">Cerrar sesión</button>
+    </div>
+    <div class="tabs">
+      <button id="tab-dashboard" class="tab active">Dashboard</button>
+      <button id="tab-nuevo" class="tab" title="Solo editor" style="display:none">Nuevo</button>
+      <button id="tab-proc" class="tab">Procedimientos</button>
+      <button id="btn-refresh" class="btn">Actualizar</button>
+
+      <!-- Export y filtro de plataforma -->
+      <select id="exp-plat" class="input" title="Filtrar por plataforma al exportar">
+        <option value="">Plataforma: Todas</option>
+        <option value="SAP">SAP</option>
+        <option value="Sistema de Gestión">Sistema de Gestión</option>
+        <option value="Mesa de Partes">Mesa de Partes</option>
+      </select>
+      <button id="btn-export" class="btn">Exportar Excel</button>
+    </div>
+  </header>
+
+  <div class="kpis card">
+    <div><h3>Total req.</h3><div id="kpi-total" class="big">–</div></div>
+    <div><h3>Autorizados</h3><div id="kpi-aut" class="big">–</div></div>
+    <div><h3>Con pendientes</h3><div id="kpi-pend" class="big">–</div></div>
+    <div><h3>Ítems totales</h3><div id="kpi-items" class="big">–</div></div>
+    <div><h3>Acciones (prom.)</h3><div id="kpi-acc" class="big">–</div></div>
+  </div>
+
+  <div class="card" id="view-dashboard">
+    <div class="row">
+      <input id="q" class="input" placeholder="Buscar por código o responsable…">
+      <select id="f-estado" class="input">
+        <option value="">Todos</option><option>Autorizado</option><option>Pendiente</option><option>Rechazado</option>
+      </select>
+
+      <!-- NUEVO: filtro por plataforma -->
+      <select id="f-plataforma" class="input">
+        <option value="">Plataforma: Todas</option>
+        <option>SAP</option>
+        <option>Sistema de Gestión</option>
+        <option>Mesa de Partes</option>
+      </select>
+
+      <input id="f-desde" type="date" class="input">
+      <input id="f-hasta" type="date" class="input">
+      <button id="btn-filtrar" class="btn">Filtrar</button>
+      <button id="btn-limpiar" class="btn ghost">Limpiar</button>
+    </div>
+
+    <div class="scroll">
+      <table class="table" id="tbl">
+        <thead>
+          <tr>
+            <th style="width:36px"></th>
+            <th>Código</th>
+            <th>Fecha</th>
+            <th>Plataforma</th>
+            <th>Detalle</th>
+            <th>Estado</th>
+            <th>Acciones a realizar</th>
+            <th>Aprobaciones</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card" id="view-nuevo" style="display:none">
+    <h3>Crear nuevo requerimiento</h3>
+    <div class="help">1) Encabezado → 2) (opcional) Aprobaciones → 3) Ítems → 4) (opcional) Acciones/Seguimiento → 5) Guardar.</div>
+
+    <fieldset class="row" style="border:1px dashed var(--border);border-radius:12px;padding:12px">
+      <input id="nr-codigo" class="input" placeholder="Código (ej. 14927)">
+      <input id="nr-fecha" type="date" class="input">
+      <select id="nr-plataforma" class="input">
+        <option value="SAP" selected>SAP</option>
+        <option value="Sistema de Gestión">Sistema de Gestión</option>
+        <option value="Mesa de Partes">Mesa de Partes</option>
+      </select>
+      <!-- CAMBIO: Coordinación -->
+      <select id="nr-tipo" class="input" title="Define si requiere aprobaciones">
+        <option value="Estándar" selected>Estándar (con aprobaciones)</option>
+        <option value="Coordinación">Coordinación (sin aprobaciones)</option>
+      </select>
+      <input id="nr-detalle" class="input" placeholder="Detalle (texto corto)">
+    </fieldset>
+
+    <div id="nr-apros-block">
+      <h4>Aprobaciones</h4>
+      <div id="nr-apros-list"></div>
+      <div class="row">
+        <input id="nr-area" class="input" placeholder="Área (R1_MANT-VIAL_2)">
+        <input id="nr-resp" class="input" placeholder="Responsable" list="responsables-list">
+        <datalist id="responsables-list"></datalist>
+        <select id="nr-estado" class="input"><option>Autorizado</option><option selected>Pendiente</option><option>Rechazado</option></select>
+        <input id="nr-festado" type="date" class="input">
+        <button id="btn-add-apro" class="btn">Agregar área</button>
+      </div>
+    </div>
+
+    <div>
+      <h4>Ítems</h4>
+      <div id="nr-items-list"></div>
+      <div class="row">
+        <input id="nr-item-nro" type="number" class="input" placeholder="#">
+        <input id="nr-item-desc" class="input" placeholder="Descripción">
+        <input id="nr-item-cant" type="number" step="0.01" class="input" placeholder="Cantidad">
+        <input id="nr-item-unid" class="input" placeholder="Unidad">
+        <button id="btn-add-item" class="btn">Agregar ítem</button>
+      </div>
+    </div>
+
+    <div id="nr-acciones-block">
+      <h4>Acciones a realizar (checklist)</h4>
+      <div id="nr-acc-list"></div>
+      <div class="row">
+        <input id="nr-acc-text" class="input" placeholder="Ej. Coordinar maquinaria con área X">
+        <button id="btn-add-acc" class="btn">Agregar acción</button>
+      </div>
+    </div>
+
+    <div>
+      <h4>Seguimiento (checklist)</h4>
+      <div id="nr-seg-list"></div>
+      <div class="row">
+        <input id="nr-seg-text" class="input" placeholder="Ej. Subir OC a SAP">
+        <button id="btn-add-seg" class="btn">Agregar tarea de seguimiento</button>
+      </div>
+    </div>
+
+    <div class="row">
+      <button id="btn-guardar" class="btn">Guardar requerimiento</button>
+      <button id="btn-cancelar" class="btn ghost">Cancelar</button>
+    </div>
+  </div>
+
+  <div class="card" id="view-proc" style="display:none">
+    <div class="row" style="justify-content:space-between;align-items:center">
+      <h3>Procedimientos (ruta de requerimiento)</h3>
+      <div>
+        <button id="btn-proc-new" class="btn" style="display:none">Nuevo procedimiento</button>
+      </div>
+    </div>
+    <div class="proc-edit" id="proc-editor" style="display:none">
+      <div>
+        <div class="row">
+          <input id="proc-title" class="input" placeholder="Título del procedimiento">
+        </div>
+        <textarea id="proc-md" placeholder="Escribe en Markdown…"></textarea>
+        <div class="row">
+          <button id="btn-proc-save" class="btn">Guardar</button>
+          <button id="btn-proc-cancel" class="btn ghost">Cancelar</button>
+        </div>
+      </div>
+      <div>
+        <div class="help">Vista previa</div>
+        <div id="proc-preview" class="proc-card proc-preview"></div>
+      </div>
+    </div>
+    <div id="proc-list" class="proc-list"></div>
+  </div>
+
+  <div id="modal" class="modal">
+    <div>
+      <h2>Editar requerimiento <span id="ed-id" class="badge"></span></h2>
+      <div class="help">Actualiza encabezado, reemplaza aprobaciones e ítems, y gestiona checklist.</div>
+
+      <div class="row">
+        <input id="ed-codigo" class="input" placeholder="Código">
+        <input id="ed-fecha" type="date" class="input">
+        <select id="ed-plataforma" class="input">
+          <option>SAP</option><option>Sistema de Gestión</option><option>Mesa de Partes</option>
+        </select>
+        <!-- CAMBIO: Coordinación -->
+        <select id="ed-tipo" class="input" title="Lógica interna Estándar/Coordinación">
+          <option>Estándar</option><option>Coordinación</option>
+        </select>
+        <input id="ed-detalle" class="input" placeholder="Detalle (texto)">
+      </div>
+
+      <h4>Aprobaciones</h4>
+      <div id="ed-apros-list"></div>
+      <div class="row">
+        <input id="ed-area" class="input" placeholder="Área">
+        <input id="ed-resp" class="input" placeholder="Responsable" list="responsables-list">
+        <select id="ed-estado" class="input"><option>Autorizado</option><option>Pendiente</option><option>Rechazado</option></select>
+        <input id="ed-festado" type="date" class="input">
+        <button id="btn-ed-add-apro" class="btn">Agregar área</button>
+      </div>
+
+      <h4>Ítems</h4>
+      <div id="ed-items-list"></div>
+      <div class="row">
+        <input id="ed-item-nro" type="number" class="input" placeholder="#">
+        <input id="ed-item-desc" class="input" placeholder="Descripción">
+        <input id="ed-item-cant" type="number" step="0.01" class="input" placeholder="Cantidad">
+        <input id="ed-item-unid" class="input" placeholder="Unidad">
+        <button id="btn-ed-add-item" class="btn">Agregar ítem</button>
+      </div>
+
+      <h4>Acciones a realizar (checklist)</h4>
+      <div id="ed-acc-list"></div>
+      <div class="row">
+        <input id="ed-acc-text" class="input" placeholder="Nueva acción">
+        <button id="btn-ed-add-acc" class="btn">Agregar acción</button>
+      </div>
+
+      <h4>Seguimiento (checklist)</h4>
+      <div id="ed-seg-list"></div>
+      <div class="row">
+        <input id="ed-seg-text" class="input" placeholder="Nueva tarea de seguimiento">
+        <button id="btn-ed-add-seg" class="btn">Agregar tarea</button>
+      </div>
+
+      <div class="row">
+        <button id="btn-ed-save" class="btn">Guardar cambios</button>
+        <button id="btn-ed-cancel" class="btn ghost">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+/* ====== CONFIG ====== */
+const SUPABASE_URL = "https://wbzxbfqowlfmmkwqeyam.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndienhiZnFvd2xmbW1rd3FleWFtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY5ODUwMDQsImV4cCI6MjA3MjU2MTAwNH0.mJJ7yID73tUerWE_aiNw3ZE4o-Q9YrT39YN-iS2CksA";
+const client = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const EDITOR_UID = "e39f3c82-d563-4b60-b58f-8cdaffe4c32f";
+const $ = (q)=>document.querySelector(q);
+const fmtDate = (d)=>{ if(!d) return ""; const dd = new Date(d); return isNaN(dd)? d : dd.toLocaleString("es-PE",{year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"})};
+const trunc = (t,n=70)=>{ if(!t) return '—'; return (t.length>n)? t.slice(0,n-1)+'…' : t; };
+function stateBadge(s){ const c=s==='Autorizado'?'ok':s==='Pendiente'?'pend':'rech'; return `<span class="status ${c}">${s}</span>`; }
+function computeGlobalStatus(apros){ if(!apros||!apros.length) return 'Pendiente'; if(apros.some(a=>a.estado==='Rechazado')) return 'Rechazado'; return apros.every(a=>a.estado==='Autorizado')?'Autorizado':'Pendiente'; }
+
+/* ====== SESSION / ROLES ====== */
+let isEditor = false;
+const toLogin = () => window.location.replace('index.html');
+
+document.getElementById('btn-logout').onclick = async ()=>{
+  try { await client.auth.signOut({ scope: 'local' }); } catch(e){ console.warn('signOut:', e?.message||e); } finally { toLogin(); }
+};
+client.auth.onAuthStateChange((_e, s)=>{ if(!s) toLogin(); });
+
+async function requireSession(){
+  const { data:{ session } } = await client.auth.getSession();
+  if(!session){ toLogin(); return null; }
+  $('#who').textContent = session.user.email || session.user.id;
+  isEditor = session.user.id === EDITOR_UID;
+  $('#role').textContent = isEditor? 'Editor':'Lector';
+  $('#tab-nuevo').style.display = isEditor? 'inline-block':'none';
+  $('#btn-proc-new').style.display = isEditor? 'inline-block':'none';
+  return session;
+}
+
+/* ====== NAV TABS ====== */
+function switchTab(name){
+  const show = (id, on)=>{ const el = document.getElementById(id); if(el) el.style.display = on?'block':'none'; };
+  ['tab-dashboard','tab-nuevo','tab-proc'].forEach(id=> $('#'+id).classList.remove('active'));
+  show('view-dashboard', name==='dashboard');
+  show('view-nuevo', name==='nuevo');
+  show('view-proc', name==='proc');
+  $('#tab-'+name).classList.add('active');
+}
+$('#tab-dashboard').onclick = ()=> switchTab('dashboard');
+$('#tab-nuevo').onclick = ()=> { if(!isEditor) return alert('Solo editor'); switchTab('nuevo'); };
+$('#tab-proc').onclick = ()=> switchTab('proc');
+
+/* ====== LAST UPDATED ====== */
+async function loadLastUpdated(){
+  const q1 = client.from('req_requerimiento').select('updated_at').order('updated_at',{ascending:false}).limit(1);
+  const q2 = client.from('req_estado').select('updated_at').order('updated_at',{ascending:false}).limit(1);
+  const q3 = client.from('req_item').select('updated_at').order('updated_at',{ascending:false}).limit(1);
+  const q4 = client.from('req_checklist').select('updated_at').order('updated_at',{ascending:false}).limit(1);
+  const [a,b,c,d] = await Promise.all([q1,q2,q3,q4]);
+  const dates = [a.data?.[0]?.updated_at,b.data?.[0]?.updated_at,c.data?.[0]?.updated_at,d.data?.[0]?.updated_at].filter(Boolean);
+  const last = dates.length ? new Date(Math.max(...dates.map(x=>new Date(x)))) : null;
+  $('#lastUpdated').textContent = last ? `actualizado hasta ${fmtDate(last)}` : 'sin actividad registrada';
+}
+
+/* ====== RESPONSABLES (datalist) ====== */
+let RESPONSABLES = [];
+async function loadResponsables(){
+  const { data, error } = await client.from('req_estado').select('responsable');
+  if(error){ console.warn('responsables:', error.message); return; }
+  const set = new Set((data||[]).map(r => (r.responsable||'').trim()).filter(Boolean));
+  RESPONSABLES = Array.from(set).sort((a,b)=> a.localeCompare(b,'es',{sensitivity:'base'}));
+  const dl = $('#responsables-list');
+  dl.innerHTML = RESPONSABLES.map(n=> `<option value="${n}"></option>`).join('');
+}
+
+/* ====== DATA: READ (FKs explícitas) ====== */
+let LAST_ROWS = [];
+async function fetchAll(filters={}){
+  const {desde,hasta,estado,q,plataforma} = filters;
+
+  let query = client.from('req_requerimiento')
+    .select(`
+      id,codigo,fecha_solicitud,plataforma,tipo,detalle,
+      req_estado:req_estado!fk_estado_req (*),
+      req_item:req_item!fk_item_req (*),
+      req_checklist:req_checklist!req_checklist_req_id_fkey (*)
+    `)
+    .order('fecha_solicitud',{ascending:false});
+
+  if(desde) query = query.gte('fecha_solicitud', desde);
+  if(hasta) query = query.lte('fecha_solicitud', hasta);
+
+  const { data, error } = await query;
+  if(error){ alert(error.message); return []; }
+
+  let rows = data||[];
+
+  // Normaliza 'Agregado' -> 'Coordinación' para UI
+  rows.forEach(r=>{ if(r.tipo==='Agregado') r.tipo='Coordinación'; });
+
+  if(plataforma){ rows = rows.filter(r => (r.plataforma||'') === plataforma); }
+  if(estado){ rows = rows.filter(r=> (r.req_estado||[]).some(e=>e.estado===estado)); }
+  if(q&&q.trim()){
+    const qq=q.trim().toLowerCase();
+    rows = rows.filter(r=> r.codigo?.toLowerCase().includes(qq)
+      || (r.req_estado||[]).some(e=> (e.responsable||'').toLowerCase().includes(qq)));
+  }
+  LAST_ROWS = rows;
+  return rows;
+}
+
+/* ====== PROGRESO POR CATEGORÍA (usamos ACCIONES) ====== */
+function progress(checks, cat='acciones'){
+  const arr = (checks||[]).filter(c=> c.categoria===cat);
+  const done = arr.filter(c=>c.done).length;
+  return {done, total: arr.length};
+}
+
+/* ====== RENDER ====== */
+function renderKpis(rows){
+  const total=rows.length;
+  const items=rows.reduce((a,r)=> a+(r.req_item?.length||0),0);
+  const aut=rows.filter(r=> computeGlobalStatus(r.req_estado)==='Autorizado').length;
+  const pend=rows.filter(r=> computeGlobalStatus(r.req_estado)==='Pendiente').length;
+
+  const proms = rows.map(r=>{ const p=progress(r.req_checklist,'acciones'); return p.total? p.done/p.total : 0; });
+  const avg = proms.length? (proms.reduce((a,b)=>a+b,0)/proms.length) : 0;
+
+  $('#kpi-total').textContent=total; $('#kpi-items').textContent=items; $('#kpi-aut').textContent=aut; $('#kpi-pend').textContent=pend;
+  $('#kpi-acc').textContent = (avg*100).toFixed(0)+'%';
+}
+
+function renderTable(rows){
+  const tb = document.querySelector('#tbl tbody'); tb.innerHTML='';
+  rows.forEach(r=>{
+    const g = computeGlobalStatus(r.req_estado);
+    const aprobCount = (r.req_estado||[]).length;
+    const acc = progress(r.req_checklist,'acciones');
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><button class="expbtn" aria-expanded="false" data-toggle="${r.id}">+</button></td>
+      <td><b>${r.codigo}</b></td>
+      <td>${r.fecha_solicitud||''}</td>
+      <td>${r.plataforma||'—'}</td>
+      <td>${trunc(r.detalle,70)}</td>
+      <td>${stateBadge(g)}</td>
+      <td>${acc.done}/${acc.total}</td>
+      <td>${aprobCount} área(s)</td>
+      <td>${isEditor? `<button class="btn ghost" data-ed="${r.id}">Editar</button>`:''}</td>
+    `;
+
+    const det = document.createElement('tr');
+    det.className = 'details-row';
+    det.id = `det-${r.id}`;
+
+    const itemsHtml = (r.req_item||[])
+      .sort((a,b)=> (a.item_nro||0)-(b.item_nro||0))
+      .map(i=> `<li><b>#${i.item_nro}</b> · ${i.descripcion} <span class="badge">${i.cantidad} ${i.unidad}</span></li>`)
+      .join('') || '<li><i>Sin ítems</i></li>';
+
+    const aprobTable = `
+      <table class="small-table">
+        <thead><tr><th>Área</th><th>Responsable</th><th>Estado</th><th>Fecha</th></tr></thead>
+        <tbody>
+          ${(r.req_estado||[]).map(e=>`
+            <tr>
+              <td>${e.area||'—'}</td>
+              <td>${e.responsable||'—'}</td>
+              <td>${e.estado||'—'}</td>
+              <td>${e.fecha_estado||'—'}</td>
+            </tr>`).join('') || `<tr><td colspan="4"><i>Sin aprobaciones</i></td></tr>`}
+        </tbody>
+      </table>`;
+
+    const accHtml = (r.req_checklist||[]).filter(c=>c.categoria==='acciones').map(c=>`
+      <div class="chk-item">
+        <input type="checkbox" ${c.done?'checked':''} data-chk="${c.id}">
+        <span class="${c.done?'chk-done':''}">${c.texto}</span>
+      </div>`).join('') || '<div class="help">Sin acciones registradas</div>';
+
+    const segHtml = (r.req_checklist||[]).filter(c=>c.categoria==='seguimiento').map(c=>`
+      <div class="chk-item">
+        <input type="checkbox" ${c.done?'checked':''} data-chk="${c.id}">
+        <span class="${c.done?'chk-done':''}">${c.texto}</span>
+      </div>`).join('') || '<div class="help">Sin tareas de seguimiento</div>';
+
+    det.innerHTML = `
+      <td></td>
+      <td colspan="8">
+        <div class="details">
+          <h4>Detalle</h4>
+          <div>${r.detalle || '<i>—</i>'}</div>
+          <h4 style="margin-top:10px">Ítems</h4>
+          <ul>${itemsHtml}</ul>
+          <h4 style="margin-top:10px">Aprobaciones</h4>
+          ${aprobTable}
+          <h4 style="margin-top:10px">Acciones a realizar</h4>
+          <div>${accHtml}</div>
+          <h4 style="margin-top:10px">Seguimiento</h4>
+          <div>${segHtml}</div>
+        </div>
+      </td>
+    `;
+
+    tb.appendChild(tr); tb.appendChild(det);
+  });
+
+  document.querySelectorAll('[data-toggle]').forEach(btn=>{
+    btn.onclick = ()=>{
+      const id = btn.getAttribute('data-toggle');
+      const row = document.getElementById(`det-${id}`);
+      const open = row.style.display === 'table-row';
+      row.style.display = open ? 'none' : 'table-row';
+      btn.setAttribute('aria-expanded', String(!open));
+      btn.textContent = open ? '+' : '−';
+    };
+  });
+
+  document.querySelectorAll('input[type="checkbox"][data-chk]').forEach(ch=>{
+    ch.onchange = async ()=>{
+      const id = parseInt(ch.getAttribute('data-chk'),10);
+      const { error } = await client.from('req_checklist').update({ done: ch.checked }).eq('id', id);
+      if(error){ alert('Error actualizando checklist: '+error.message); ch.checked = !ch.checked; return; }
+      load();
+    };
+  });
+
+  if(isEditor){
+    document.querySelectorAll('[data-ed]').forEach(b=>{
+      const id = parseInt(b.getAttribute('data-ed'),10);
+      b.onclick = ()=> {
+        const row = rows.find(x=> x.id === id);
+        openEditor(row);
+      };
+    });
+  }
+}
+
+/* ====== LOAD + FILTER ====== */
+async function load(){
+  const rows = await fetchAll({
+    desde: $('#f-desde').value || null,
+    hasta: $('#f-hasta').value || null,
+    estado: $('#f-estado').value || null,
+    plataforma: $('#f-plataforma').value || null,
+    q: $('#q').value || null
+  });
+  renderKpis(rows); renderTable(rows); await loadLastUpdated(); await loadResponsables();
+}
+$('#btn-filtrar').onclick = load;
+$('#btn-limpiar').onclick = ()=>{ $('#q').value=''; $('#f-estado').value=''; $('#f-plataforma').value=''; $('#f-desde').value=''; $('#f-hasta').value=''; load(); };
+$('#btn-refresh').onclick = load;
+
+/* ====== REALTIME ====== */
+client.channel('req-rt')
+  .on('postgres_changes',{event:'*',schema:'public',table:'req_requerimiento'}, load)
+  .on('postgres_changes',{event:'*',schema:'public',table:'req_estado'}, load)
+  .on('postgres_changes',{event:'*',schema:'public',table:'req_item'}, load)
+  .on('postgres_changes',{event:'*',schema:'public',table:'req_checklist'}, load)
+  .subscribe();
+
+/* ====== EXPORTAR EXCEL (formato “expandido”) ====== */
+function safeSheetName(name, fallback){
+  const s = String(name||'').replace(/[\\/?*[\]:]/g,'').slice(0,31).trim();
+  return s || String(fallback||'Hoja');
+}
+
+document.getElementById('btn-export').onclick = ()=>{
+  const plat = $('#exp-plat').value;
+  const rows = plat ? LAST_ROWS.filter(r=> (r.plataforma||'')===plat) : LAST_ROWS.slice();
+
+  const wb = XLSX.utils.book_new();
+
+  // Hoja de Resumen
+  const resumen = rows.map(r=>{
+    const acc = (r.req_checklist||[]).filter(c=>c.categoria==='acciones');
+    const done = acc.filter(c=>c.done).length;
+    return {
+      id: r.id,
+      codigo: r.codigo,
+      fecha_solicitud: r.fecha_solicitud,
+      plataforma: r.plataforma,
+      detalle: r.detalle || '',
+      estado_global: computeGlobalStatus(r.req_estado),
+      acciones_hechas: done,
+      acciones_total: acc.length,
+      aprobaciones: (r.req_estado||[]).length
+    };
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(resumen), 'Resumen');
+
+  // Una hoja por requerimiento con bloques como el expandido
+  const usedNames = new Set(['Resumen']);
+  rows.forEach(r=>{
+    const items = (r.req_item||[]).sort((a,b)=>(a.item_nro||0)-(b.item_nro||0));
+    const aprob = (r.req_estado||[]);
+    const acc = (r.req_checklist||[]).filter(c=>c.categoria==='acciones');
+    const seg = (r.req_checklist||[]).filter(c=>c.categoria==='seguimiento');
+
+    const aoa = [
+      ['Código', r.codigo || ''],
+      ['Fecha', r.fecha_solicitud || ''],
+      ['Plataforma', r.plataforma || ''],
+      ['Tipo', r.tipo || ''],
+      ['Estado global', computeGlobalStatus(r.req_estado)],
+      ['Detalle', r.detalle || '—'],
+      [],
+      ['Ítems'],
+      ['#','Descripción','Cantidad','Unidad'],
+      ...items.map(i=> [i.item_nro, i.descripcion, i.cantidad, i.unidad]),
+      [],
+      ['Aprobaciones'],
+      ['Área','Responsable','Estado','Fecha'],
+      ...aprob.map(e=> [e.area||'', e.responsable||'', e.estado||'', e.fecha_estado||'']),
+      [],
+      ['Acciones a realizar'],
+      ['Hecho','Acción'],
+      ...acc.map(c=> [c.done?'✔':'', c.texto]),
+      [],
+      ['Seguimiento'],
+      ['Hecho','Tarea'],
+      ...seg.map(c=> [c.done?'✔':'', c.texto])
+    ];
+
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+
+    // Ancho de columnas básico
+    ws['!cols'] = [{wch:10},{wch:60},{wch:14},{wch:16}];
+
+    // Nombre de hoja único
+    let name = safeSheetName(r.codigo || r.id, `Req_${r.id}`);
+    if(usedNames.has(name)){
+      name = safeSheetName(`${name}_${r.id}`, `Req_${r.id}`);
+    }
+    usedNames.add(name);
+
+    XLSX.utils.book_append_sheet(wb, ws, name);
+  });
+
+  const stamp = new Date().toISOString().slice(0,10).replace(/-/g,'');
+  const name = `requerimientos_${plat||'todas'}_${stamp}.xlsx`;
+  XLSX.writeFile(wb, name);
+};
+
+/* ====== NUEVO (solo editor) ====== */
+let apros=[], items=[], accs=[], segs=[];
+
+function refreshListsNuevo(){
+  $('#nr-apros-list').innerHTML = apros.map((a,i)=>`<div class="row"><span class="pill">${a.area}</span><span class="badge">${a.responsable}</span>${stateBadge(a.estado)}<span class="badge">${a.fecha_estado||''}</span><button class="btn ghost" onclick="removeA(${i})">Quitar</button></div>`).join('');
+  $('#nr-items-list').innerHTML = items.map((t,i)=>`<div class="row"><span class="badge">#${t.item_nro}</span><span class="badge">${t.unidad}</span><span class="badge">${t.cantidad}</span><div style="flex:1">${t.descripcion}</div><button class="btn ghost" onclick="removeI(${i})">Quitar</button></div>`).join('');
+  $('#nr-acc-list').innerHTML = accs.map((t,i)=>`<div class="row"><span class="badge">•</span><div style="flex:1">${t.texto}</div><button class="btn ghost" onclick="removeAcc(${i})">Quitar</button></div>`).join('');
+  $('#nr-seg-list').innerHTML = segs.map((t,i)=>`<div class="row"><span class="badge">•</span><div style="flex:1">${t.texto}</div><button class="btn ghost" onclick="removeSeg(${i})">Quitar</button></div>`).join('');
+}
+window.removeA = (i)=>{ apros.splice(i,1); refreshListsNuevo(); };
+window.removeI = (i)=>{ items.splice(i,1); refreshListsNuevo(); };
+window.removeAcc = (i)=>{ accs.splice(i,1); refreshListsNuevo(); };
+window.removeSeg = (i)=>{ segs.splice(i,1); refreshListsNuevo(); };
+
+$('#btn-add-apro').onclick = ()=>{ if(!isEditor) return alert('Solo editor');
+  const a=$('#nr-area').value.trim(), r=$('#nr-resp').value.trim(), e=$('#nr-estado').value, f=$('#nr-festado').value||null;
+  if(!a||!r) return alert('Área y Responsable obligatorios');
+  apros.push({area:a,responsable:r,estado:e,fecha_estado:f});
+  $('#nr-area').value=''; $('#nr-resp').value=''; $('#nr-estado').value='Pendiente'; $('#nr-festado').value='';
+  refreshListsNuevo();
+};
+$('#btn-add-item').onclick = ()=>{ if(!isEditor) return alert('Solo editor');
+  const n=parseInt($('#nr-item-nro').value || (items.length+1),10),
+        d=$('#nr-item-desc').value.trim(),
+        c=parseFloat($('#nr-item-cant').value||'0'),
+        u=$('#nr-item-unid').value.trim();
+  if(!d||!u||!c) return alert('Ítem: desc, cant y unidad');
+  items.push({item_nro:n,descripcion:d,cantidad:c,unidad:u});
+  $('#nr-item-nro').value=''; $('#nr-item-desc').value=''; $('#nr-item-cant').value=''; $('#nr-item-unid').value='';
+  refreshListsNuevo();
+};
+$('#btn-add-acc').onclick = ()=>{ if(!isEditor) return alert('Solo editor');
+  const t = $('#nr-acc-text').value.trim(); if(!t) return;
+  accs.push({texto:t}); $('#nr-acc-text').value=''; refreshListsNuevo();
+};
+$('#btn-add-seg').onclick = ()=>{ if(!isEditor) return alert('Solo editor');
+  const t = $('#nr-seg-text').value.trim(); if(!t) return;
+  segs.push({texto:t}); $('#nr-seg-text').value=''; refreshListsNuevo();
+};
+
+$('#nr-tipo').onchange = ()=>{
+  const tipo = $('#nr-tipo').value;
+  document.getElementById('nr-apros-block').style.display = (tipo==='Coordinación') ? 'none' : 'block';
+};
+
+$('#btn-guardar').onclick = async ()=>{
+  const { data:{ user } } = await client.auth.getUser();
+  if(!user) return alert('Primero inicia sesión');
+  if(!isEditor) return alert('Solo editor puede guardar');
+
+  const codigo = $('#nr-codigo').value.trim();
+  const fecha = $('#nr-fecha').value || new Date().toISOString().slice(0,10);
+  const plataforma = $('#nr-plataforma').value;
+  const tipo = $('#nr-tipo').value;
+  const detalle = $('#nr-detalle').value.trim() || null;
+  if(!codigo) return alert('Código obligatorio');
+
+  const ins1 = await client.from('req_requerimiento')
+    .insert({ codigo, fecha_solicitud: fecha, plataforma, tipo, detalle })
+    .select('id').single();
+  if(ins1.error) return alert('Error creando requerimiento: '+ins1.error.message);
+  const req_id = ins1.data.id;
+
+  if(tipo!=='Coordinación' && apros.length){
+    const rows = apros.map(a=>({req_id,area:a.area,responsable:a.responsable,estado:a.estado,fecha_estado:a.fecha_estado||null}));
+    const ins2 = await client.from('req_estado').insert(rows);
+    if(ins2.error) return alert('Error aprobaciones: '+ins2.error.message);
+  }
+  if(items.length){
+    const rows = items.map(t=>({req_id,item_nro:t.item_nro,descripcion:t.descripcion,cantidad:t.cantidad,unidad:t.unidad}));
+    const ins3 = await client.from('req_item').insert(rows);
+    if(ins3.error) return alert('Error ítems: '+ins3.error.message);
+  }
+  const toChecklist = [];
+  accs.forEach(x=> toChecklist.push({req_id,categoria:'acciones',texto:x.texto,done:false}));
+  segs.forEach(x=> toChecklist.push({req_id,categoria:'seguimiento',texto:x.texto,done:false}));
+  if(toChecklist.length){
+    const ins4 = await client.from('req_checklist').insert(toChecklist);
+    if(ins4.error) return alert('Error checklist: '+ins4.error.message);
+  }
+
+  apros.length=0; items.length=0; accs.length=0; segs.length=0; refreshListsNuevo();
+  $('#nr-codigo').value=''; $('#nr-fecha').value=''; $('#nr-detalle').value='';
+  alert('Requerimiento creado');
+  await load();
+  switchTab('dashboard');
+};
+$('#btn-cancelar').onclick = ()=>{ apros.length=0; items.length=0; accs.length=0; segs.length=0; refreshListsNuevo(); switchTab('dashboard'); };
+
+/* ====== EDITAR (solo editor) ====== */
+let ed_id=null, ed_apros=[], ed_items=[], ed_accs=[], ed_segs=[], ed_toDelete = {acc:[], seg:[]};
+
+function openEditor(row){
+  if(!isEditor) return alert('Solo editor');
+  ed_id = row.id;
+  $('#ed-id').textContent = row.id;
+  $('#ed-codigo').value = row.codigo || '';
+  $('#ed-fecha').value  = row.fecha_solicitud || '';
+  $('#ed-plataforma').value = row.plataforma || 'SAP';
+  $('#ed-tipo').value = (row.tipo==='Agregado' ? 'Coordinación' : (row.tipo||'Estándar'));
+  $('#ed-detalle').value = row.detalle || '';
+
+  ed_apros = (row.req_estado||[]).map(e=>({area:e.area,responsable:e.responsable,estado:e.estado,fecha_estado:e.fecha_estado||null}));
+  ed_items = (row.req_item||[]).map(i=>({item_nro:i.item_nro,descripcion:i.descripcion,cantidad:i.cantidad,unidad:i.unidad}));
+
+  ed_accs = (row.req_checklist||[]).filter(c=>c.categoria==='acciones').map(c=>({id:c.id,texto:c.texto,done:!!c.done}));
+  ed_segs = (row.req_checklist||[]).filter(c=>c.categoria==='seguimiento').map(c=>({id:c.id,texto:c.texto,done:!!c.done}));
+  ed_toDelete = {acc:[], seg:[]};
+
+  refreshEdAprob(); refreshEdItems(); refreshEdChecklist();
+  document.getElementById('modal').style.display='flex';
+}
+
+function refreshEdAprob(){
+  $('#ed-apros-list').innerHTML = ed_apros.map((a,i)=>`
+    <div class="row">
+      <input value="${a.area}" onchange="ed_apros[${i}].area=this.value" class="input" placeholder="Área">
+      <input value="${a.responsable}" onchange="ed_apros[${i}].responsable=this.value" class="input" list="responsables-list" placeholder="Responsable">
+      <select class="input" onchange="ed_apros[${i}].estado=this.value">
+        <option ${a.estado==='Autorizado'?'selected':''}>Autorizado</option>
+        <option ${a.estado==='Pendiente'?'selected':''}>Pendiente</option>
+        <option ${a.estado==='Rechazado'?'selected':''}>Rechazado</option>
+      </select>
+      <input type="date" value="${a.fecha_estado||''}" onchange="ed_apros[${i}].fecha_estado=this.value" class="input">
+      <button class="btn ghost" onclick="ed_apros.splice(${i},1); refreshEdAprob();">Quitar</button>
+    </div>`).join('');
+}
+function refreshEdItems(){
+  $('#ed-items-list').innerHTML = ed_items.map((t,i)=>`
+    <div class="row">
+      <input type="number" value="${t.item_nro}" onchange="ed_items[${i}].item_nro=parseInt(this.value,10)" class="input" style="max-width:90px">
+      <input value="${t.descripcion}" onchange="ed_items[${i}].descripcion=this.value" class="input" style="flex:2">
+      <input type="number" step="0.01" value="${t.cantidad}" onchange="ed_items[${i}].cantidad=parseFloat(this.value)" class="input" style="max-width:140px">
+      <input value="${t.unidad}" onchange="ed_items[${i}].unidad=this.value" class="input" style="max-width:120px">
+      <button class="btn ghost" onclick="ed_items.splice(${i},1); refreshEdItems();">Quitar</button>
+    </div>`).join('');
+}
+function refreshEdChecklist(){
+  $('#ed-acc-list').innerHTML = ed_accs.map((t,i)=>`
+    <div class="row" style="align-items:center">
+      <input type="checkbox" ${t.done?'checked':''} onchange="ed_accs[${i}].done=this.checked">
+      <input value="${t.texto}" onchange="ed_accs[${i}].texto=this.value" class="input" style="flex:1">
+      <button class="btn ghost" onclick="(ed_accs[${i}].id? ed_toDelete.acc.push(ed_accs[${i}].id):null); ed_accs.splice(${i},1); refreshEdChecklist();">Quitar</button>
+    </div>`).join('') || '<div class="help">Sin acciones</div>';
+
+  $('#ed-seg-list').innerHTML = ed_segs.map((t,i)=>`
+    <div class="row" style="align-items:center">
+      <input type="checkbox" ${t.done?'checked':''} onchange="ed_segs[${i}].done=this.checked">
+      <input value="${t.texto}" onchange="ed_segs[${i}].texto=this.value" class="input" style="flex:1">
+      <button class="btn ghost" onclick="(ed_segs[${i}].id? ed_toDelete.seg.push(ed_segs[${i}].id):null); ed_segs.splice(${i},1); refreshEdChecklist();">Quitar</button>
+    </div>`).join('') || '<div class="help">Sin seguimiento</div>';
+}
+
+document.getElementById('btn-ed-add-apro').onclick = ()=>{ 
+  const a=$('#ed-area').value.trim(), r=$('#ed-resp').value.trim(), e=$('#ed-estado').value, f=$('#ed-festado').value||null;
+  if(!a||!r) return alert('Área y Responsable');
+  ed_apros.push({area:a,responsable:r,estado:e,fecha_estado:f});
+  $('#ed-area').value=''; $('#ed-resp').value=''; $('#ed-estado').value='Pendiente'; $('#ed-festado').value='';
+  refreshEdAprob();
+};
+document.getElementById('btn-ed-add-item').onclick = ()=>{ 
+  const n=parseInt($('#ed-item-nro').value||ed_items.length+1,10), d=$('#ed-item-desc').value.trim(), c=parseFloat($('#ed-item-cant').value||'0'), u=$('#ed-item-unid').value.trim();
+  if(!d||!u||!c) return alert('Ítem incompleto');
+  ed_items.push({item_nro:n,descripcion:d,cantidad:c,unidad:u});
+  $('#ed-item-nro').value=''; $('#ed-item-desc').value=''; $('#ed-item-cant').value=''; $('#ed-item-unid').value='';
+  refreshEdItems();
+};
+document.getElementById('btn-ed-add-acc').onclick = ()=>{ 
+  const t=$('#ed-acc-text').value.trim(); if(!t) return;
+  ed_accs.push({texto:t,done:false}); $('#ed-acc-text').value=''; refreshEdChecklist();
+};
+document.getElementById('btn-ed-add-seg').onclick = ()=>{ 
+  const t=$('#ed-seg-text').value.trim(); if(!t) return;
+  ed_segs.push({texto:t,done:false}); $('#ed-seg-text').value=''; refreshEdChecklist();
+};
+
+/* === Guardar editor === */
+document.getElementById('btn-ed-save').onclick = async ()=>{
+  if(!isEditor) return alert('Solo editor');
+
+  // 1) Encabezado
+  const up1 = await client.from('req_requerimiento')
+    .update({ 
+      codigo: $('#ed-codigo').value.trim(), 
+      fecha_solicitud: $('#ed-fecha').value || null,
+      plataforma: $('#ed-plataforma').value,
+      tipo: $('#ed-tipo').value,
+      detalle: $('#ed-detalle').value.trim() || null
+    }).eq('id', ed_id);
+  if(up1.error) return alert('Encabezado: '+up1.error.message);
+
+  // 2) Aprobaciones (replace si no es Coordinación)
+  const delA = await client.from('req_estado').delete().eq('req_id', ed_id); 
+  if(delA.error) return alert('Limpiar aprobaciones: '+delA.error.message);
+  if($('#ed-tipo').value!=='Coordinación' && ed_apros.length){
+    const rowsA = ed_apros.map(a=>({ req_id: ed_id, area:a.area, responsable:a.responsable, estado:a.estado, fecha_estado:a.fecha_estado||null }));
+    const insA = await client.from('req_estado').insert(rowsA); 
+    if(insA.error) return alert('Insert aprobaciones: '+insA.error.message);
+  }
+
+  // 3) Ítems (replace)
+  const delI = await client.from('req_item').delete().eq('req_id', ed_id); 
+  if(delI.error) return alert('Limpiar ítems: '+delI.error.message);
+  if(ed_items.length){
+    const rowsI = ed_items.map(t=>({ req_id: ed_id, item_nro:t.item_nro, descripcion:t.descripcion, cantidad:t.cantidad, unidad:t.unidad }));
+    const insI = await client.from('req_item').insert(rowsI); 
+    if(insI.error) return alert('Insert ítems: '+insI.error.message);
+  }
+
+  // 4) Checklist: eliminar marcados
+  const delIds = [...ed_toDelete.acc, ...ed_toDelete.seg];
+  if(delIds.length){
+    const delC = await client.from('req_checklist').delete().in('id', delIds);
+    if(delC.error) return alert('Eliminar checklist: '+delC.error.message);
+  }
+
+  // 5) Checklist: UPDATE existentes
+  const updPromises = [];
+  ed_accs.filter(x=>x.id).forEach(x=> updPromises.push(client.from('req_checklist').update({ texto: x.texto, done: !!x.done }).eq('id', x.id)));
+  ed_segs.filter(x=>x.id).forEach(x=> updPromises.push(client.from('req_checklist').update({ texto: x.texto, done: !!x.done }).eq('id', x.id)));
+  if(updPromises.length){
+    const res = await Promise.all(updPromises);
+    const err = res.find(r => r.error);
+    if(err) return alert('Actualizar checklist: '+err.error.message);
+  }
+
+  // 6) Checklist: INSERT nuevos
+  const newAcc = ed_accs.filter(x=>!x.id).map(x=>({ req_id: ed_id, categoria:'acciones', texto:x.texto, done: !!x.done }));
+  const newSeg = ed_segs.filter(x=>!x.id).map(x=>({ req_id: ed_id, categoria:'seguimiento', texto:x.texto, done: !!x.done }));
+  if(newAcc.length){ const insA = await client.from('req_checklist').insert(newAcc); if(insA.error) return alert('Insert acciones: '+insA.error.message); }
+  if(newSeg.length){ const insS = await client.from('req_checklist').insert(newSeg); if(insS.error) return alert('Insert seguimiento: '+insS.error.message); }
+
+  document.getElementById('modal').style.display='none';
+  alert('Cambios guardados');
+  await load();
+};
+document.getElementById('btn-ed-cancel').onclick = ()=> { document.getElementById('modal').style.display='none'; };
+
+/* ====== PROCEDIMIENTOS ====== */
+let procEditingId = null;
+function renderProcPreview(){ const md = $('#proc-md').value || ''; $('#proc-preview').innerHTML = marked.parse(md); }
+document.getElementById('proc-md')?.addEventListener('input', renderProcPreview);
+
+async function loadProcedimientos(){
+  const { data, error } = await client.from('req_doc').select('*').order('updated_at', { ascending:false });
+  if(error){ alert('Procedimientos: '+error.message); return; }
+  const list = data||[];
+  const box = $('#proc-list');
+  box.innerHTML = list.map(doc=>`
+    <div class="proc-card">
+      <div class="proc-header">
+        <div>
+          <div class="proc-title">${doc.titulo||'—'}</div>
+          <div class="help">Actualizado: ${fmtDate(doc.updated_at)}</div>
+        </div>
+        ${isEditor? `<button class="btn ghost" data-proc-edit="${doc.id}">Editar</button>`:''}
+      </div>
+      <div class="proc-preview">${marked.parse(doc.contenido_md||'')}</div>
+    </div>
+  `).join('') || '<div class="help">Sin procedimientos</div>';
+
+  if(isEditor){
+    document.querySelectorAll('[data-proc-edit]').forEach(b=>{
+      b.onclick = ()=>{
+        const id = parseInt(b.getAttribute('data-proc-edit'),10);
+        const doc = list.find(x=> x.id===id);
+        procEditingId = id;
+        document.getElementById('proc-title').value = doc.titulo || '';
+        document.getElementById('proc-md').value = doc.contenido_md || '';
+        renderProcPreview();
+        document.getElementById('proc-editor').style.display='grid';
+      };
+    });
+  }
+}
+document.getElementById('btn-proc-new').onclick = ()=>{ procEditingId=null; document.getElementById('proc-title').value=''; document.getElementById('proc-md').value=''; renderProcPreview(); document.getElementById('proc-editor').style.display='grid'; };
+document.getElementById('btn-proc-cancel').onclick = ()=>{ document.getElementById('proc-editor').style.display='none'; };
+document.getElementById('btn-proc-save').onclick = async ()=>{
+  if(!isEditor) return alert('Solo editor');
+  const titulo = document.getElementById('proc-title').value.trim();
+  const contenido_md = document.getElementById('proc-md').value || '';
+  if(!titulo) return alert('Título obligatorio');
+  if(procEditingId){
+    const up = await client.from('req_doc').update({ titulo, contenido_md }).eq('id', procEditingId);
+    if(up.error) return alert('Actualizar doc: '+up.error.message);
+  }else{
+    const ins = await client.from('req_doc').insert({ titulo, contenido_md }).select('id').single();
+    if(ins.error) return alert('Crear doc: '+ins.error.message);
+  }
+  document.getElementById('proc-editor').style.display='none';
+  await loadProcedimientos();
+};
+
+/* ====== INIT ====== */
+(async ()=>{
+  const s = await requireSession(); if(!s) return;
+  await load();
+  await loadProcedimientos();
+})();
+</script>
+</body>
+</html>
